@@ -57,7 +57,7 @@ module ModelFilter
       @areltable ||= arel_table
       mapping = filter_mappings[field]
       if mapping
-        send(mapping, compar_sym, wanted_value)
+        send(mapping, wanted_value, compar_sym)
       else
         where(@areltable[field].send(compar_sym, wanted_value))
       end
