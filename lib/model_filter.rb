@@ -59,8 +59,42 @@ module ModelFilter
       if mapping
         send(mapping, wanted_value, compar_sym)
       else
-        where(@areltable[field].send(compar_sym, wanted_value))
+        advanced_fields.include?(field) && [:eq, :in, :not_eq, :not_in].include?(compar_sym) ?
+          special_numeric_filter(field, wanted_value, compar_sym) :
+          where(@areltable[field].send(compar_sym, wanted_value))
       end
+    end
+
+    # Any comparison symbol will be transformed to :eq, :not_eq, :in, :not_in
+    # depend on presence 'not' part
+    #
+    # Whitespaces in digits_str argument will be ignored
+    #
+    # Usage:
+    #   MyModel.special_numeric_filter(:id, "1, 2, 5 - 7.3", :eq)
+    #     #=> (my_models.id BETWEEN 5.0 AND 7.3 OR my_models.id IN (1.0, 2.0))
+    #   MyModel.special_numeric_filter(:id, "1, 2, 5 - 7.3", :not_eq)
+    #     #=> my_models.id < 5.0 OR my_models.id > 7.3 AND my_models.id NOT IN (1.0, 2.0)
+    def special_numeric_filter(col, digits_str, compar_sym = nil)
+      compar_prefix = /not/ === compar_sym ? 'not_' : ''
+      statements_binder = compar_prefix.blank? ? :or : :and
+
+      arel_tbl = arel_table
+      prepared_conds = digits_str.to_s.split(',').
+        map{|ar| ar.gsub(/[^\d.-]/, '')}.
+        each_with_object({in_conds: [], between_conds: []}){|to_parse, hash|
+          el = to_parse.split('-').map(&:to_f).minmax.delete_if(&:nil?).uniq
+          if el.one?
+            hash[:in_conds] |= el
+          elsif el.size == 2
+            hash[:between_conds] |= [Range.new(*el)]
+          end
+        }
+      arel_query = (prepared_conds[:between_conds] | [prepared_conds[:in_conds]].delete_if(&:blank?)).map{|el|
+        conds = (el.is_a?(Array) && el.one?) ? ["#{compar_prefix}eq", el.first] : ["#{compar_prefix}in", el]
+        arel_tbl[col].send(*conds)
+      }.inject(statements_binder)
+      where(arel_query)
     end
 
     # for use in views
@@ -94,6 +128,17 @@ module ModelFilter
       raise ArgumentError, 'Condition must be true or false' unless
         cond.is_a?(TrueClass) || cond.is_a?(FalseClass)
       @ignore_blank_values = cond
+    end
+
+    # fields for which will be used special_numeric_filter (only numeric and positive)
+    def advanced_fields
+      defined?(@advanced_fields) ? @advanced_fields : send(:advanced_fields=, [])
+    end
+
+    # should be invoked as config when including to model
+    def advanced_fields=(fields)
+      raise ArgumentError, 'Argument must be an Array' unless fields.is_a?(Array)
+      @advanced_fields = fields
     end
 
     # where filters placed in params (for controllers/views)
@@ -152,6 +197,7 @@ module ModelFilter
         private_class_method :comparison_symbols=
         private_class_method :ignore_blank_values=
         private_class_method :filters_placement=
+        private_class_method :advanced_fields=
       end
     # end private
   end

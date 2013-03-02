@@ -30,6 +30,9 @@ If you need to change settings, provide some config like this:
       '='       => :eq,
       'greater' => :gt,
     }
+    conf.advanced_fields = [:price]                # fields for which will be applied special filter
+                                                   # (only numeric and positive) like this: '1, 3-7, 12'
+                                                   # with comparison symbols :eq, :not_eq, :in, :not_in
     filter_mappings = {
       :id                 => :remapped_id_filter,  # if you want special id filter behavior
       :some_custom_filter => :some_custom_method   # e.g. for properties depended
@@ -72,7 +75,7 @@ These methods autoatically picks up methods for columns mapped by <tt>*filter_ma
 
 If you want that <tt>*filtered*</tt> method to ignore blank filter values, place into
 the config section:
-  ignore_blank_values = true
+  config.ignore_blank_values = true
 This has a result:
   MyModel.filtered(:id => nil).to_sql # => SELECT my_models.* FROM my_models
 Otherwise (if ignore_blank_values = false)
@@ -80,6 +83,19 @@ Otherwise (if ignore_blank_values = false)
 That setting can be overrided by including <tt><b>:ignore_blank_values => true <i>(or false)</i></b></tt>
 into arguments hash:
   MyModel.filtered(:name => nil, :ignore_blank_values => false)
+
+If you want to filter some fields with arrays, ranges, etc then place into the config section
+something like this:
+  config.advanced_fields = [:price, :quantity]
+Then, you can call:
+  MyModel.filtered(price: '1-99, 103, 209').to_sql
+    #=> SELECT my_models.* FROM my_models
+    #   WHERE ((my_models.price BETWEEN 1.0 AND 99.0 OR my_models.price IN (103.0, 209.0)))
+  MyModel.filtered(price: '1-99, 103, 209', price_compar: :not_eq).to_sql  # or :not_in
+    #=> SELECT my_models.* FROM my_models.price
+    #   WHERE (my_models.price < 1.0 OR my_models.price > 99.0 AND my_models.price NOT IN (103.0, 209.0))
+  MyModel.filtered(price: '3').to_sql
+    #=> SELECT my_models.* FROM my_models  WHERE my_models.price = 3.0
 
 All conditions passed to <tt>*filtered*</tt> method will be combined with 'AND' condition.
 
