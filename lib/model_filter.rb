@@ -22,8 +22,14 @@ module ModelFilter
   module ClassMethods
     extend self
 
-    # filters placement in params (e.g. params[:filters]
+    # filters placement in params (e.g. params[:filters])
     DEFAULT_FILTERS_PLACEMENT = :filters
+
+    # suffix to detect comparison symbol "field" in filters' hash
+    # comparison symbol for field 'amount' will be search in filters[:amount_compar] by default
+    DEFAULT_COMPARISON_SYMBOL_FIELD_SUFFIX = :compar
+
+    DEFAULT_IGNORE_BLANK_VALUES_PRESET = true
 
     DEFAULT_COMPARISON_SYMBOLS = {
       '='  => :eq,
@@ -37,14 +43,15 @@ module ModelFilter
     # Usage:
     #   MyModel.filtered({:id => 3, :col2 => 1..9, :col2_compar => :not_in})
     # method expects that comparison symbols param names composed of column
-    # name and '_compar' suffix ('id - id_compar')
+    # name and '_compar' suffix ('id - id_compar'). Suffix is configurable.
     #
     # Arguments hash can contain <tt><b>:ignore_blank_values => true (or false)</b></tt>
     # that overrides global settings once.
-    def filtered(filters = {})
+    def filtered(raw_filters = {})
+      filters = raw_filters.symbolize_keys
       to_filter = suitable_keys(filters)
       to_filter.empty? ? scoped : to_filter.inject(self){|injected, field|
-        injected.with_value_of(field, filters[field], filters["#{field}_compar".to_sym])
+        injected.with_value_of(field, filters[field.to_sym], filters["#{field}_#{comparison_symbol_suffix}".to_sym])
       }
     end
 
@@ -59,7 +66,7 @@ module ModelFilter
       if mapping
         send(mapping, wanted_value, compar_sym)
       else
-        advanced_fields.include?(field) && [:eq, :in, :not_eq, :not_in].include?(compar_sym) ?
+        advanced_fields.include?(field) && [:eq, :in, :not_eq, :not_in].include?(compar_sym.to_sym) ?
           special_numeric_filter(field, wanted_value, compar_sym) :
           where(@areltable[field].send(compar_sym, wanted_value))
       end
@@ -116,9 +123,22 @@ module ModelFilter
       @comparison_symbols = syms == :default ? DEFAULT_COMPARISON_SYMBOLS : syms
     end
 
+    # for internal use
+    def comparison_symbol_suffix
+      defined?(@comparison_symbol_suffix) ? @comparison_symbol_suffix :
+        send(:comparison_symbol_suffix=, DEFAULT_COMPARISON_SYMBOL_FIELD_SUFFIX)
+    end
+
+    # sets suffix for filter field where will be search comparison symbol for it
+    #
+    # should be invoked as config when including to model
+    def comparison_symbol_suffix=(suffix)
+      @comparison_symbol_suffix = suffix
+    end
+
     # shows if empty filters should be ignored
     def ignore_blank_values?
-      defined?(@ignore_blank_values) ? @ignore_blank_values : send(:ignore_blank_values=, false)
+      defined?(@ignore_blank_values) ? @ignore_blank_values : send(:ignore_blank_values=, DEFAULT_IGNORE_BLANK_VALUES_PRESET)
     end
 
     # for ignoring blank values when filtering (e.g. Model.filtered({id: 1..3, name: ''})
@@ -184,8 +204,7 @@ module ModelFilter
     #
     # for internal use
     def suitable_keys(filters = {})
-      no_blanks = filters[:ignore_blank_values].nil? ?
-        ignore_blank_values? : filters[:ignore_blank_values]
+      no_blanks = filters.fetch(:ignore_blank_values, ignore_blank_values?)
       wanted_keys = no_blanks ? filters.select{|k,v| v.present? }.keys : filters.keys
       enabled_filters & wanted_keys
     end
@@ -198,9 +217,10 @@ module ModelFilter
         private_class_method :ignore_blank_values=
         private_class_method :filters_placement=
         private_class_method :advanced_fields=
+        private_class_method :comparison_symbol_suffix=
       end
     # end private
-  end
+  end  # ClassMethods
 end
 
 ::ActiveRecord::Base.send :include, ModelFilter::Base

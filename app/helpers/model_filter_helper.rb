@@ -9,13 +9,12 @@ module ModelFilterHelper
   #
   # html_options - any html options (id, class, multiplicity, etc).
   def compar_symbols_select_for(field, option_tags = nil, html_options = {id: nil})
-    theclass = controller.class.name.sub('Controller', '').singularize.constantize
-    filters_placement = theclass.respond_to?(:filters_placement) ? theclass.filters_placement :
-      ModelFilter::ClassMethods.filters_placement
+    theclass = controller.controller_name.classify.constantize
+    filters_placement = obtain_config(:filters_placement, theclass)
+    compar_suffix = obtain_config(:comparison_symbol_suffix, theclass)
 
     unless option_tags.is_a?(Hash)
-      default_options = theclass.respond_to?(:comparison_symbols) ? theclass.comparison_symbols :
-        ModelFilter::ClassMethods.comparison_symbols
+      default_options = obtain_config(:comparison_symbols, theclass)
 
       # # if provided array, try to use it, else use default comparison_symbols
       option_tags = !option_tags.is_a?(Array) ?  default_options :
@@ -25,10 +24,16 @@ module ModelFilterHelper
 
     option_tags_args = [option_tags]
     # add param for set selected option if needed
-    option_tags_args << params[filters_placement]["#{field}_compar"] if
-      params[filters_placement] && defined?(params[filters_placement]["#{field}_compar"])
+    option_tags_args << params[filters_placement]["#{field}_#{compar_suffix}"] if
+      defined?(params[filters_placement]["#{field}_#{compar_suffix}"])
 
-    select_tag( "#{filters_placement}[#{field}_compar]", options_for_select(*option_tags_args), html_options )
+    select_tag "#{filters_placement}[#{field}_#{compar_suffix}]", options_for_select(*option_tags_args), html_options
   end
 
+  private
+    def obtain_config(adjustment, src_class = nil)
+      src_class && src_class.respond_to?(adjustment) ? src_class.send(adjustment) :
+        ModelFilter::ClassMethods.send(adjustment)
+    end
+  # end private
 end

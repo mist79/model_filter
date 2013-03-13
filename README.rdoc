@@ -23,9 +23,15 @@ comparison symbols to use in views for comboboxes (<=, =, >=, !=)
 If you need to change settings, provide some config like this:
   acts_as_filterable do |conf|
     conf.allowed_filters     = [:id, :name, :some_custom_filter]  # default: :all (all columns + filter_mappings)
+
     conf.filters_placement   = :the_filters         # default: :filters - where filters placed in request params
                                                     # (for controllers/views)
-    conf.ignore_blank_values = true                 # defalut: false (can be overrided at Model.filtered call)
+
+    conf.ignore_blank_values = false                # defalut: true (can be overrided at Model.filtered call)
+
+    conf.comparison_symbol_suffix = :comparisonsym  # default: :compar - suffix for comparison symbol 'field' name
+                                                    # in filters (for field 'amount' it will be 'amount_comparisonsym')
+
     conf.comparison_symbols  = {                    # default: :default (=, <, >, <=, >=, !=)
       '='       => :eq,
       'greater' => :gt,
@@ -73,14 +79,14 @@ If you want to filter one field, you can use method <tt>*with_value_of*</tt>
 These methods autoatically picks up methods for columns mapped by <tt>*filter_mappings*</tt>
 (for <tt>*filtered*</tt> method - only if they listed in <tt>*allowed_filters*</tt>)
 
-If you want that <tt>*filtered*</tt> method to ignore blank filter values, place into
+If you want that <tt>*filtered*</tt> method to process blank filter values, place into
 the config section:
-  config.ignore_blank_values = true
+  config.ignore_blank_values = false
 This has a result:
-  MyModel.filtered(:id => nil).to_sql # => SELECT my_models.* FROM my_models
-Otherwise (if ignore_blank_values = false)
   MyModel.filtered(:id => nil).to_sql # => SELECT my_models.* FROM my_models WHERE id IS NULL
-That setting can be overrided by including <tt><b>:ignore_blank_values => true <i>(or false)</i></b></tt>
+Otherwise (if ignore_blank_values = false)
+  MyModel.filtered(:id => nil).to_sql # => SELECT my_models.* FROM my_models
+That setting can be overrided by including <tt><b>:ignore_blank_values => false <i>(or true)</i></b></tt>
 into arguments hash:
   MyModel.filtered(:name => nil, :ignore_blank_values => false)
 
